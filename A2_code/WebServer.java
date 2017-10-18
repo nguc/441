@@ -10,21 +10,29 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.io.*;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 	
 
 public class WebServer extends Thread {
 	String METHOD = "GET"; 
 	String PROTOCOL = "HTTP/1.1";
-	int POOL_SIZE = 8;
-	ExecutorService executor = Executors.newFixedThreadPool(POOL_SIZE);
+	String CONNECTION_CLOSED = "Connection: close\r\n";
+	
 	private volatile boolean shutdown = false;
 	private ServerSocket serverSocket;
+	
 	PrintWriter out;
 	BufferedReader in;
+	
+	//int POOL_SIZE = 8;
+	//ExecutorService executor = Executors.newFixedThreadPool(POOL_SIZE);
 
     /**
      * Default constructor to initialize the web server
@@ -55,10 +63,10 @@ public class WebServer extends Thread {
 	 * 
      */
 	public void run() {
-		
 		Socket clientSocket = null;
 		try 
 		{
+			clientSocket = serverSocket.accept();
 			serverSocket.setSoTimeout(1000);
 			
 			while (!shutdown) 
@@ -88,8 +96,10 @@ public class WebServer extends Thread {
 					File file = new File(reqLine[1]);
 					if(file.isDirectory()) 
 					{
+						// send server response + "Connection:close" at end
 						// tranfer file over connection
 						// close connection
+						System.out.println(errorResponse(code));
 					}
 					else 
 					{
@@ -97,26 +107,25 @@ public class WebServer extends Thread {
 						code = "404 Not Found";
 					}
 				}
-				else
-				{
-					// send error for bad request (400)
-					System.out.println(code);
-				}
+				
+				
+				// send error for bad request (400) or not found (404)
+				// Date\n Server\n connection:close
+				System.out.println(errorResponse(code));
+				
+				// clean up (close sockets, threads, etc.)
+				in.close();
+				out.close();
+				serverSocket.close();
 				
 			}
-			
-			
 		}
 		catch (IOException e) 
 		{ 
 			// do nothing, allows process to check the shutdown flag	
 		}	
-		// clean up (close sockets, threads, etc.)
-		try {
-			in.close();
-			out.close();
-			serverSocket.close();
-		} catch (IOException e) { e.printStackTrace(); }
+		
+
 		
 		
 	}
@@ -147,14 +156,69 @@ public class WebServer extends Thread {
 		return code;
 	}
 	
+	public String goodResponse(String code) {
+		String response = 
+				METHOD + " " + code + "\r\n" + 
+				getDate() +
+				getServer() + 
+				// last-mod
+				// content-length
+				// content-type
+				CONNECTION_CLOSED;
+		return response;
+	}
 	
+	/**
+	 * 
+	 * @param code
+	 * @return
+	 */
+	public String errorResponse(String code) {
+		String response = METHOD + " " + code + "\r\n" + 
+						  getDate() + 
+						  getServer() + 
+						  CONNECTION_CLOSED;
+		return response;
+	}
+	
+	/**
+	 * 
+	 * @return
+	 */
+	public String getDate () {
+		String current = "";
+		DateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy hh:mm:ss zzz");
+		Date date = new Date();
+		current =  dateFormat.format(date);
+		return current + "\r\n";
+	}
+	
+	/**
+	 * Code taken from stack overflow: 
+	 * https://stackoverflow.com/questions/7883542/getting-the-computer-name-in-java
+	 * @return
+	 */
+	public String getServer() {
+		String hostname = "";
+		try
+		{
+		    InetAddress addr;
+		    addr = InetAddress.getLocalHost();
+		    hostname = addr.getHostName();
+		}
+		catch (UnknownHostException ex)
+		{
+		    System.out.println("Hostname can not be resolved");
+		}
+		return hostname + "\r\n";
+	}
 	
 	
 	/**
 	 * A simple driver.
 	 */
 	public static void main(String[] args) {
-		int serverPort = 2226;
+		int serverPort = 2227;
 
 		// parse command line args
 		if (args.length == 1) {
