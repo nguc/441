@@ -22,17 +22,12 @@ import java.text.SimpleDateFormat;
 
 public class WebServer extends Thread {
 	
-	
+	public final int POOL_SIZE = 8;
 	public int PORT_NUM;
-	
+	private ExecutorService executor; 
 	private volatile boolean shutdown = false;
 	private ServerSocket serverSocket;
 	
-	
-	
-	
-	//int POOL_SIZE = 8;
-	//ExecutorService executor = Executors.newFixedThreadPool(POOL_SIZE);
 
     /**
      * Default constructor to initialize the web server
@@ -48,6 +43,7 @@ public class WebServer extends Thread {
 			{
 				// Initialize and open a server socket that listens to port number given
 				PORT_NUM = port;
+				executor = Executors.newFixedThreadPool(POOL_SIZE);
 				System.out.println("Started server on port " + port);
 			} 
 		}
@@ -62,7 +58,7 @@ public class WebServer extends Thread {
 	 * 
      */
 	public void run() {
-
+		
 		try
 		{
 			this.serverSocket = new ServerSocket(PORT_NUM);
@@ -79,15 +75,24 @@ public class WebServer extends Thread {
 			try 
 			{
 			// accept new connection
-				try { clientSocket = serverSocket.accept();}
-				catch (SocketTimeoutException e){} 
+				try 
+				{ 
+					//Worker thread = new Worker(clientSocket);
+					executor.execute(new Worker(serverSocket.accept()));
+					// clientSocket = serverSocket.accept();
+				}
+				catch (SocketTimeoutException e)
+				{
+					//System.out.println("Check flag");
+					// do nothing, allows process to check the shutdown flag	
+				} 
 			// create worker thread to handle new connection
-			Thread thread = new Thread((new Worker(clientSocket)));
-			thread.start();
+			//Worker thread = new Worker(clientSocket);
+			//executor.execute(thread);
 			}
 			catch (IOException e) 
 			{ 
-				// do nothing, allows process to check the shutdown flag	
+				
 			}		
 		}
 			
@@ -103,14 +108,24 @@ public class WebServer extends Thread {
      */
 	public void shutdown() {
 		shutdown = true;
-		try
+		
+		try {
+			// do not accept any new tasks
+			executor.shutdown();
+			// wait 5 seconds for existing tasks to terminate
+			if (!executor.awaitTermination(5, TimeUnit.SECONDS)) 
+			{
+				executor.shutdownNow(); // cancel currently executing tasks
+			}
+		} 
+		catch (InterruptedException e) 
 		{
-			this.serverSocket.close();
-		}
-		catch (Exception e){
-			
+			// cancel currently executing tasks
+			executor.shutdownNow();
 		}
 		
+		try { serverSocket.close(); }
+		catch (IOException e) { System.out.println("Server socket didn't close properly " + e); }
 	}
 
 	
@@ -120,7 +135,7 @@ public class WebServer extends Thread {
 	 * A simple driver.
 	 */
 	public static void main(String[] args) {
-		int serverPort = 2227;
+		int serverPort = 2228;
 
 		// parse command line args
 		if (args.length == 1) {
