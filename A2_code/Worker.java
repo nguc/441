@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -51,14 +52,15 @@ public class Worker implements Runnable{
 					if(file.exists()) 
 					{
 						// transfer file over connection
-						System.out.println(goodResponse(file, code));
-						
+						//System.out.println(goodResponse(file, code));
+						outputToClient(goodResponse(file, code));
 					}
 					else 
 					{
 						// return error
 						code = "404 Not Found";
-						System.out.println(errorResponse(code) + "\nFile not found");
+						outputToClient(errorResponse(code));
+						//System.out.println(errorResponse(code) + "\nFile not found");
 					}
 					
 				}
@@ -67,7 +69,8 @@ public class Worker implements Runnable{
 				{
 					// send error for bad request (400) or not found (404)
 					// Date\n Server\n connection:close
-					System.out.println(errorResponse(code));
+					//System.out.println(errorResponse(code));
+					outputToClient(errorResponse(code));
 				}
 				
 				
@@ -84,6 +87,19 @@ public class Worker implements Runnable{
 		
 	}
 	
+	public void outputToClient(String response) {
+		int count = 0;
+		byte[] bytes = response.getBytes(); 
+		try 
+		{
+			OutputStream out = socket.getOutputStream();
+			bytes = response.getBytes();
+			out.write(bytes);
+			out.flush();
+		}
+		catch (IOException e) {}
+		
+	}
 	
 	/**
 	 *  Checks if request was sent properly
