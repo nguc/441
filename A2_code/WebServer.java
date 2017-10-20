@@ -71,7 +71,7 @@ public class WebServer extends Thread {
 		
 		while (!shutdown) 
 		{
-			//Socket clientSocket = new Socket();
+			Socket clientSocket = new Socket();
 			try 
 			{
 			// accept new connection
@@ -135,7 +135,7 @@ public class WebServer extends Thread {
 	 * A simple driver.
 	 */
 	public static void main(String[] args) {
-		int serverPort = 3000;
+		int serverPort = 2228;
 
 		// parse command line args
 		if (args.length == 1) {
