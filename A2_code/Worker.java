@@ -1,9 +1,10 @@
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -18,91 +19,121 @@ public class Worker implements Runnable{
 	public final String PROTOCOL_v11 = "HTTP/1.1";
 	public final String CONNECTION_CLOSED = "Connection: close\r\n";
 	public final String PATHNAME = System.getProperty("user.dir");
-	public Socket socket;
+	public Socket cSocket;
 	
 	
+	// Constructor: takes in the socket connected to the client 
 	public Worker(Socket socket) {
-		this.socket = socket;
+		cSocket = socket;
 	}
 	
-	
+	/**
+	 * Parses the request line, then sends the appropriate response. 
+	 * Will also send the file data if request is OK and file exists in current directory
+	 */
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
 		try
 		{
-			PrintWriter out = new PrintWriter (socket.getOutputStream(), true);
-			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			String inputLine, outputLine;
+			BufferedReader in = new BufferedReader(new InputStreamReader(cSocket.getInputStream()));
+			String inputLine;
 			String [] wholeRequest, reqLine;
-			//out.println(outputLine); output to client
 				
 			while ((inputLine = in.readLine()) != null)
 			{
 				System.out.println("Requested page: " + inputLine);
 				wholeRequest = inputLine.split("\r\n");
 				reqLine = wholeRequest[0].split(" ");
-				// get a status code
-				String code = isValidRequest(reqLine);
+				
+				String code = isValidRequest(reqLine);		// get a status code
+				
 				if (code.equals("200 OK"))
-				{
-					
+				{	
 					String fileName = PATHNAME + reqLine[1];
 					File file = new File(fileName);
+					
 					if(file.exists()) 
 					{
-						// transfer file over connection
-						//System.out.println(goodResponse(file, code));
+						// transfer header and file over connection
 						outputToClient(goodResponse(file, code));
+						fileOutputToClient(file);
 					}
 					else 
 					{
-						// return error
 						code = "404 Not Found";
 						outputToClient(errorResponse(code));
-						//System.out.println(errorResponse(code) + "\nFile not found");
 					}
-					
 				}
-				
 				else 
 				{
-					// send error for bad request (400) or not found (404)
-					// Date\n Server\n connection:close
-					//System.out.println(errorResponse(code));
+					// output an error message
 					outputToClient(errorResponse(code));
 				}
-				
-				
-				// clean up (close sockets, threads, etc.)
-				in.close();
-				out.close();
-				
-				
 			}
+			// clean up
+			in.close();
+				
 		}
-		catch (Exception e){
-			
+		catch (Exception e)
+		{
+			System.out.println("Can't open a reader" + e);
 		}
-		
 	}
 	
+	
+	/**
+	 * Sends the byte data from file through the socket to the client 
+	 * @param file the file we are reading from
+	 */
+	public void fileOutputToClient(File file) {
+		try 
+		{
+			InputStream inS = new FileInputStream(file);
+			OutputStream outS = cSocket.getOutputStream();
+			byte[] bytes = new byte[8*1024];
+			int count;
+			
+			while((count = inS.read(bytes)) > 0) 
+			{
+				outS.write(bytes,  0 , count);
+				outS.flush();
+			}
+			
+			outS.close();
+			inS.close();
+		}
+		catch (IOException e) 
+		{
+			System.out.println("Can't get socket input/output stream" + e);
+		}
+		
+		
+	}
+
+	/**
+	 * Sends the response header to the client
+	 * @param response a string containing the appropriate response header
+	 */
 	public void outputToClient(String response) {
 		int count = 0;
 		byte[] bytes = response.getBytes(); 
 		try 
 		{
-			OutputStream out = socket.getOutputStream();
+			OutputStream out = cSocket.getOutputStream();
 			bytes = response.getBytes();
 			out.write(bytes);
 			out.flush();
+			out.close();
 		}
-		catch (IOException e) {}
+		catch (IOException e) { System.out.println(" Can't get socket output stream");}
+	
 		
 	}
 	
 	/**
-	 *  Checks if request was sent properly
+	 *  Checks if the request is properly formatted
+	 *  @Param reqLine a String array containing the tokens of the request header line
+	 *  @return code is the status code of the request
 	 */
 	public String isValidRequest(String [] reqLine) {
 		String code = "200 OK";
@@ -122,9 +153,11 @@ public class Worker implements Runnable{
 	}
 	
 	/**
-	 * 
-	 * @param code
-	 * @return
+	 * Constructs a response header for a good request
+	 * @param:
+	 *  file the file request by the client
+	 *  code the status code of the request (200)
+	 * @return response a string containing the full response header
 	 */
 	public String goodResponse(File file, String code) {
 		DateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy hh:mm:ss zzz");
@@ -146,9 +179,9 @@ public class Worker implements Runnable{
 	}
 	
 	/**
-	 * 
-	 * @param code
-	 * @return
+	 * Constructs the response header for a request that had an error
+	 * @param code the status code of the error (400 or 404)
+	 * @return response a string with the full response header
 	 */
 	public String errorResponse(String code) {
 		String response = PROTOCOL + " " + code + "\r\n" + 
@@ -160,8 +193,8 @@ public class Worker implements Runnable{
 	}
 	
 	/**
-	 * 
-	 * @return
+	 * Gets the current local date and time 
+	 * @return current a formatted string of the current date and time
 	 */
 	public String getDate () {
 		String current = "";
@@ -172,9 +205,10 @@ public class Worker implements Runnable{
 	}
 	
 	/**
+	 * Gets the name of the host computer
 	 * Code taken from stack overflow: 
 	 * https://stackoverflow.com/questions/7883542/getting-the-computer-name-in-java
-	 * @return
+	 * @return hostname the name of the computer that is running the server
 	 */
 	public String getServer() {
 		String hostname = "";
